@@ -4,23 +4,13 @@
 #include <fstream>
 #include <memory>
 #include <random>
+#include "Technologies.h"
+#include "TechGroups.h"
 
 using namespace std;
 
-struct UnitPips {   //Longbow, Redcoat Infantry, Flying Battery, Tortoise Formation, Caracole
-    string techGroup;
-    int techLvl;
-    int type;   //Infantry, Cavalry, Artillery
-    int offensiveFirePip;
-    int defensiveFirePip;
-    int offensiveShockPip;
-    int defensiveShockPip;
-    int offensiveMoralePip;
-    int defensiveMoralePip;
-};
-
 struct Unit : UnitPips {
-    int type;   //Infantry, Cavalry, Artillery
+    int type;   //Infantry (1), Cavalry (2), Artillery (3)
     string variant; //Bluecoat Infantry vs Redcoat infantry
     int strength = 1000;
     float morale;   //In battle morale
@@ -28,8 +18,42 @@ struct Unit : UnitPips {
     string special = "No"; //What special unit if any
 };
 
+class Country {
+public:
+    bool defender;  //Attacker is always shown first in battle
+    string tag = "Aul-Dwarov";
+
+    int technologyLvl = 1;
+    Technology technology = technologies[technologyLvl];
+
+    string techGroup = "Dwarven";
+
+    string infType = "Scattergun Axualies";
+    string cavType = "Ramsteel Cavalry";
+    string artType = "Mithrill Gun";
+
+    float moraleModifier = 0.2;
+    float discipline = 0.1;
+
+    float infCombatAbility = 0.1;
+    float cavCombatAbility = 0;
+    float artCombatAbility = 0.2;
+
+    float fireDamageReceived = 0;
+    float fireDamageDone = 0;
+    float shockDamageReceived = 0.1;
+    float shockDamageDone = 0;
+    float moraleDamageReceived = 0;
+    float moraleDamage = 0;
+
+    bool isHorde = false;
+    float moraleDamageTakenByReserves = 0;
+    int diceRollBonus = 0;
+    float artDamageFromBackrow = 0.2;
+
+};
+
 struct General {
-    string name;
     int fire;
     int shock;
     int maneuver;
@@ -37,178 +61,132 @@ struct General {
     string trait = "No";
 };
 
-class Army : public Unit, public General {
-public:
+struct Army {   //Rather stack than army
+    int id; //Many stacks can be used, (but up to 1 can battle at a time) so they can be easily swaped for comparison
+    string name;    //Eventual name
 
-    string tag;
-    int technologyLvl;
-
-    string techGroup;
-    string infType;
-    string cavType;
-    string artType;
-
-    float maxMorale;
-    float discipline;
-    float milTactics;
-
-    float infCombatAbility;
-    float cavCombatAbility;
-    float artCombatAbility;
-
-    float fireDamageReceived;
-    float fireDamageDone;
-    float shockDamageReceived;
-    float shockDamageDone;
-    float moraleDamageReceived;
-    float moraleDamage;
-
-    bool isHorde;
-    float moraleDamageTakenbyReserves;
-    int diceRollBonus;
-    float artDamageBackrow;
-    string allowedSpecialUnits;
-
-    int infAmout;
-    int cavAmout;
-    int artAmout;
-    int powtorzeniaFazBiwy;
+    Country* owner; //Points to the country that owns this army
+    General general;
+    int infAmout = 8;
+    int cavAmout = 2;
+    int artAmout = 4;
 };
 
-struct Technology {
-    int number;
-    string name;
-    string AnbennarName;
-
-    int maxMoraleBase;
-    int combatWidth;
-    float baseMilTactics;
-    float flankingRangeBaseBonus;
-
-    float infFireDamage;
-    float infShockDamage;
-    float cavFireDamage;
-    float cavShockDamage;
-    float artFireDamage;
-    float artShockDamage;
-
-    // Calculation variables
-    int generalAdvantage;
-    int baseCasualties;
-    float multipliers;
-    int strengthCasualties;
-    float moraleCasualties;
-    int i;
-
-    // Shared variables
-    int diceRoll;   // Except for this one
-    int terrain;
-    int crossing;
-    float duration;
-    bool phase=true;   // As 1 statement is true and therefore first in execution, it mean "FIRE" phase and 0 means "SHOCK" phase
-};
-
-class Battle : public Army {
+class Battle : public Country {
 public:
-    Army A;   //Variable describing attacker
-    Army D;   //Variable describing defender
 
-    Army* aa;
-    Army* dd;
+    Army* A;    //Variable describing battle side A - not attacker
+    Army* B;    //Variable describing battle side B
 
-    void FileReading (bool affiliation, Army *a);
+    void FileReading(bool affiliation, Army *A, Army *B);   //Affiliation != attacker/defender
 
-    void StatsApplication (Army *a, Army *b);
+    //void StatsApplication(Army *a, Army *d);
 
-    static int DamageCalc (int diceRoll, bool phase, int terrain, int crossing, float strength,
-        float Amorale, float Dmorale, int Gfire, int Gshock, int EGfire, int EGshock, int Gmaneuver, int EGmaneuver,
-        int diceRollBonus, int ofPip, int dfPip, int osPip, int dsPip, float fireDamage, float shockDamage, float milTac,
-        float combatAbility, float discipline, float duration, float AfireDamageDone, float DfireDamageReceived,
-        float AshockDamageDone, float DshockDamageReceived, float AmoraleDamageDone, float DmoraleDamageReceived);
+    void BattleFormation(bool initial, bool affiliation, Army *A, Army *B);    //Initial deployment on day 0 - true/false
+
+    static int diceRolls ();
+
+    static int DamageCalc(int diceRoll, int diceRollBonus, bool phase, int terrain, int crossing, Unit& A, Unit& D,
+    int Gfire, int Gshock, int EGfire, int EGshock, int Gmaneuver, int EGmaneuver,
+    int ofPip, int dfPip, int osPip, int dsPip,
+    float fireDamage, float shockDamage, float milTac, float combatAbility, float discipline,
+    float duration, float AfireDamageDone, float DfireDamageReceived,
+    float AshockDamageDone, float DshockDamageReceived, float AmoraleDamageDone, float DmoraleDamageReceived, float maxMorale);
 
     void Surrender(bool affiliation, Army *a, Army *d);
-    void DamageApplication(bool affiliation, Army *a, Army *d);
+    void DamageApplication(bool affiliation, Country *a, Country *d);
 
     Battle() {
 
-        aa = &A;
-        dd = &D;
+        //a = &A;
+        //d = &D;
 
-        FileReading(true, aa);  //Load
-        FileReading(false, dd);
+        //FileReading(true, a, d);  //Load
+        //FileReading(false, a, d);
+
+        //Add regiments
+        //A.addUnits(10, 1, "Matchbeard Mortars", 0.0);
+        //D.addUnits(10, 1, "Steelcoat Infanty", 0.0);
+
+        //Add generals
 
         // Wyznaczenie bazowych wartosci dla zmiennych na podstawie innych zmiennych
-        aa->milTactics = aa->baseMilTactics * (1 + aa->discipline);   // Regimenty zwiekszaja swoj poziom taktyki (umiejetonosci unikania obrazen) tylu krotnie, ile wynosi ich dyscyplina
-        dd->milTactics = dd->baseMilTactics * (1 + dd->discipline);
-        aa->infantry.morale = aa->maxMorale;
-        dd->infantry.morale = dd->maxMorale;
-
-        //Surrender(1, aa, dd);
-
-        // Algorytm tworzenia liczb calkowitych losowych z przedzialu 0-9, potrzebny do generacji rzutu koscia
-        const int diceFrom  = 0;
-        const int diceTo    = 9;
-        random_device                  rand_dev;
-        mt19937                        generator(rand_dev());
-        uniform_int_distribution<int>  distr(diceFrom, diceTo);
+        //a->milTactics = a->milTactics * (1 + a->discipline);
+        //d->milTactics = d->milTactics * (1 + d->discipline);
 
         int duration = 0;
+        for (int i=0; i < 120; i++) {
 
-        aa->diceRoll = distr(generator);
-        dd->diceRoll = distr(generator);
-        //cout<<endl<<aa->diceRoll<<endl;
-        //cout<<endl<<dd->diceRoll<<endl;
-
-        for (i=0; i<aa->powtorzeniaFazBiwy; i++) {
-
-            for (i=0; i<3; i++) {    // 3 dni ostrzalow "FIRE"
-
-            DamageCalcA(1, aa, dd);
-            DamageCalcD(1, aa, dd);
-            DamageApplication(1, aa, dd);
-            DamageApplication(0, aa, dd);
-            aa->duration++;
-            dd->duration++;
-
+            for (i=0; i<3; i++) {    //FIRE phase
+                duration++;
+                //DamageCalc(diceRolls(), 0, 0, 0, 1000, A.units[1], );
+                //DamageCalc(1, A, d);
+                //DamageApplication(true, a, d);
+                //DamageApplication(false, a, d);
             }
-
-            aa->diceRoll = distr(generator);
-            dd->diceRoll = distr(generator);
-            //cout<<endl<<aa->diceRoll<<endl;
-            //cout<<endl<<dd->diceRoll<<endl;
-            for (i=0; i<3; i++) {    // 3 dni walki w recz "SHOCK"
-
-            DamageCalcA(0, aa, dd);
-            DamageCalcD(0, aa, dd);
-            DamageApplication(1, aa, dd);
-            DamageApplication(0, aa, dd);
-            aa->duration++;
-            dd->duration++;
-
+            for (i=0; i<3; i++) {    //SHOCK phase
+                duration++;
+                //DamageCalc(0, a, d);
+                //DamageCalc(0, a, d);
+                //DamageApplication(true, a, d);
+                //DamageApplication(false, a, d);
             }
-
         }
-
     }
 };
 
-void Battle::StatsApplication (Army *a, Army *b) {
+//void Battle::StatsApplication (Army *a, Army *d) {}
 
+void Battle::BattleFormation(bool initial, bool affiliation, Army *A, Army *B) {
+
+    int combatWidth = max(A->owner->technology.combatWidth, B->owner->technology.combatWidth);
+    vector<Unit*> frontLine(combatWidth, nullptr);
+    vector<Unit*> backLine(combatWidth, nullptr);
+    vector<Unit*> reserves(combatWidth, nullptr);
+
+    float moraleDamageFirstLine = 0;
+    float avgEnemyMaxMorale = 0;
+
+    const int center = (combatWidth - 1) / 2;   // Left-biased center
+    int leftFlank = center;
+    int rightFlank = center + 1;
+
+    // Place units (example: using attacker's army)
+    /*for (auto &unit : a->units) {
+        if (leftFlank >= 0) {
+            frontLine[leftFlank--] = &unit;
+        } else if (rightFlank < combatWidth) {
+            frontLine[rightFlank++] = &unit;
+        } else { break; }   // No space left (combat width exceeded)
+    }*/
+
+    //Debug
+    /*cout << "\n--- Battle Formation Debug ---\n";
+    for (int i = 0; i < combatWidth; i++) {
+        cout << "Position " << i << ": ";
+        if (formation[i] != nullptr) {
+            cout << formation[i]->variant << " (Type " << formation[i]->type << ")";
+        } else {
+            cout << "Empty";
+        }
+    }*/
 }
 
-int Battle::DamageCalc (const int diceRoll, const bool phase, const int terrain, const int crossing, const float strength,
-    const float Amorale, const float Dmorale, const int Gfire, const int Gshock, const int EGfire, const int EGshock, const int Gmaneuver, const int EGmaneuver,
-    const int diceRollBonus, const int ofPip, const int dfPip, const int osPip, const int dsPip, const float fireDamage, const float shockDamage, const float milTac,
-    const float combatAbility, const float discipline, const float duration, const float AfireDamageDone, const float DfireDamageReceived,
-    const float AshockDamageDone, const float DshockDamageReceived, const float AmoraleDamageDone, const float DmoraleDamageReceived) {
+int Battle::DamageCalc (const int diceRoll, const int diceRollBonus, const bool phase, const int terrain, const int crossing, Unit& A, Unit& D,
+    const int Gfire, const int Gshock, const int EGfire, const int EGshock, const int Gmaneuver, const int EGmaneuver,
+    const int ofPip, const int dfPip, const int osPip, const int dsPip,
+    const float fireDamage, const float shockDamage, const float milTac, const float combatAbility, const float discipline,
+    const float duration, const float AfireDamageDone, const float DfireDamageReceived,
+    const float AshockDamageDone, const float DshockDamageReceived, const float AmoraleDamageDone, const float DmoraleDamageReceived, float maxMorale) {
 
     int strengthCasualties = 0;
     float moraleCasualties = 0;
 
-    if (Amorale > 0 && strength > 0) {
+    if (A.morale > 0 && A.strength > 0) {
 
         int generalAdvantage = 0;
-        int unitAdvantage = 0;
+        int unitAdvantage = 0;  //Comparision of regiment FIRE/SHOCK pips
+        const int moraleAdvantage = A.offensiveMoralePip - D.defensiveMoralePip;    //Comparison of regiment MORALE pips
         float techDamageMultiplier = 0;
         float armyDamageDoneMultiplier = 0;
         float armyDamageReceivedMultiplier = 0;
@@ -228,18 +206,33 @@ int Battle::DamageCalc (const int diceRoll, const bool phase, const int terrain,
             armyDamageReceivedMultiplier = DshockDamageReceived;
         }
 
-        const int baseCasualties = max((15 + 5 * (diceRoll + diceRollBonus + generalAdvantage + unitAdvantage - terrain - crossing)),15);
+        const int baseStrengthCasualties = max((15 + 5 * (diceRoll + diceRollBonus + generalAdvantage + unitAdvantage - terrain - crossing)), 15);
 
-        const float multipliers = ((strength / 1000) * (techDamageMultiplier / milTac) * (1 + combatAbility) * (1 + discipline) * (1 + duration / 100));
+        const float multipliers = ((A.strength / 1000) * (techDamageMultiplier / milTac) * (1 + combatAbility) * (1 + discipline) * (1 + duration / 100));
 
-        strengthCasualties = floor(baseCasualties * multipliers * (1 + armyDamageDoneMultiplier) * (1 + armyDamageReceivedMultiplier));
+        strengthCasualties = floor(baseStrengthCasualties * multipliers * (1 + armyDamageDoneMultiplier) * (1 + armyDamageReceivedMultiplier));
 
-        moraleCasualties = baseCasualties * multipliers * (1 + AmoraleDamageDone) * (1 + DmoraleDamageReceived) * (Amorale / 540) + ((Dmorale * d->infAmout / d->infAmout) / 100); // Work in progress - needs averange enemy morale across frontline
+        const int baseMoraleCasualties = max((15 + 5 * (diceRoll + diceRollBonus + generalAdvantage + moraleAdvantage + unitAdvantage - terrain - crossing)), 15);
 
-        cout<<"\nDamage done:\n"<<strengthCasualties<<endl<<moraleCasualties<< endl;
+        //moraleCasualties = baseMoraleCasualties * multipliers * (1 + AmoraleDamageDone) * (1 + DmoraleDamageReceived) * (maxMorale / 540) + ((Dmorale * d->infAmout / d->infAmout) / 100); // Work in progress - needs averange enemy morale across lines
+
+        cout<<"\nDamage done:\n"<<strengthCasualties<<endl<<moraleCasualties<<endl;
 
     }
+
     return strengthCasualties, moraleCasualties;
+
+}
+
+int Battle::diceRolls () {
+
+    const int diceFrom  = 0;
+    const int diceTo    = 9;
+    random_device                  rand_dev;
+    mt19937                        generator(rand_dev());
+    uniform_int_distribution<int>  distr(diceFrom, diceTo);
+
+    return distr(generator);
 
 }
 
@@ -247,44 +240,46 @@ void Battle::Surrender(bool affiliation, Army *a, Army *d) {
 
     if (affiliation) {  //  Atakujacy wycofal sie z bitwy
 
-        cout<<"\nAtakujaca armia kraju "<<a->tag<<" wycofala sie z bitwy.\nBitwe wygrala wiec armia kraju "<<d->tag<<".\n";
+        //cout<<"\nAtakujaca armia kraju "<<a->tag<<" wycofala sie z bitwy.\nBitwe wygrala wiec armia kraju "<<d->tag<<".\n";
 
-    } else { cout<<"\nBroniaca sie armia kraju "<<d->tag<<" wycofala sie z bitwy.\nBitwe wygrala wiec armia kraju "<<a->tag<<".\n"; }   // Obronca wycofal sie z bitwy
+    } else {
+        //cout<<"\nBroniaca sie armia kraju "<<d->tag<<" wycofala sie z bitwy.\nBitwe wygrala wiec armia kraju "<<a->tag<<".\n";
+    }   // Obronca wycofal sie z bitwy
 
 };
 
-void Battle::DamageApplication(bool affiliation, Army *a, Army *d) {  // After all calculations are done, units take damage from the enemy they have faced
+void Battle::DamageApplication(bool affiliation, Country *a, Country *d) {  // After all calculations are done, units take damage from the enemy they have faced
 
     if (affiliation) {  // Attacker damage applied to defender
 
-        if (d->infantry.morale > a->moraleDamage) { d->infantry.morale = d->infantry.morale - a->moraleCasualties; }
-        else { d->infantry.morale = 0.00; Surrender(false, aa, dd); }
+        //if (morale > moraleDamage) { morale = morale - moraleCasualties; }
+        //else { d->infantry.morale = 0.00; Surrender(false, aa, dd); }
 
-        if (d->infantry.strength > a->strengthCasualties) { d->infantry.strength = d->infantry.strength - a->strengthCasualties; }
-        else { d->infantry.strength = 0; }  // Unit loses all remaining manpower and (to be done) retreats
-        cout<<endl<<"Defender stats"<<endl<<d->infantry.strength<<endl<<d->infantry.morale<<endl;
+        //if (d->infantry.strength > a->strengthCasualties) { d->infantry.strength = d->infantry.strength - a->strengthCasualties; }
+        //else { d->infantry.strength = 0; }  // Unit loses all remaining manpower and (to be done) retreats
+        //cout<<endl<<"Defender stats"<<endl<<d->infantry.strength<<endl<<d->infantry.morale<<endl;
     }
 
     else {  // Defender damage applied to attacker
 
-        if (a->infantry.morale > d->moraleDamage) { a->infantry.morale = a->infantry.morale - d->moraleCasualties; }
-        else { a->infantry.morale = 0.00; Surrender(true, aa, dd); }
+        //if (a->infantry.morale > d->moraleDamage) { a->infantry.morale = a->infantry.morale - d->moraleCasualties; }
+        //else { a->infantry.morale = 0.00; Surrender(true, aa, dd); }
 
-        if (a->infantry.strength > d->strengthCasualties) { a->infantry.strength = a->infantry.strength - d->strengthCasualties; }
-        else { a->infantry.strength = 0; }  // Unit loses all remaining manpower and (to be done) retreats
-        cout<<endl<<"Attacker stats"<<endl<<a->infantry.strength<<endl<<a->infantry.morale<<endl;
+        //if (a->infantry.strength > d->strengthCasualties) { a->infantry.strength = a->infantry.strength - d->strengthCasualties; }
+        //else { a->infantry.strength = 0; }  // Unit loses all remaining manpower and (to be done) retreats
+        //cout<<endl<<"Attacker stats"<<endl<<a->infantry.strength<<endl<<a->infantry.morale<<endl;
     }
 
 };
 
-void Battle::FileReading (bool affiliation, Army *a) {  //  Odczyt z plikow: affiliation - jesli 1 to umieszczamy dane Atakujacego, jesli 0 to Obroncy
+void Battle::FileReading(bool affiliation, Army *A, Army *B) {  //  Odczyt z plikow: affiliation - jesli 1 to umieszczamy dane Atakujacego, jesli 0 to Obroncy
 
-        string fileInput="";    //  Zmienna przechowujaca surowy tekst z pliku
-        int row=0;              // Rzad danych z pliku, pierwszy rzad ma numer 0
+        string fileInput="";    //Varriable containing raw text from file
+        int row=0;              //Row of data from file, first = 0
         int whereMark=0;
         fstream Plik;
-        int wiersze = 38; // Ilosc wierszy do odczytania z pliku
-        string fileArray[wiersze];
+        int wiersze = 38;   //Amount of rows to read
+        string fileArray[37];
 
         if (affiliation)    {
             Plik.open("Army_A.txt");
@@ -299,7 +294,7 @@ void Battle::FileReading (bool affiliation, Army *a) {  //  Odczyt z plikow: aff
         }
         Plik.close();
 
-        row=0;
+        /*row=0;
         while (row<wiersze) {    //  Wpisanie danych z tabeli do odpowiednich zmiennych wraz z konwertowaniem jezeli potrzeba
         switch (row) {
 
@@ -321,32 +316,32 @@ void Battle::FileReading (bool affiliation, Army *a) {  //  Odczyt z plikow: aff
         case 15: a->moraleDamage = stof(fileArray[row]); break; //  Morale Damage
         case 16: a->moraleDamageReceived = stof(fileArray[row]); break; //  Morale Damage Received
         case 17: a->isHorde = stoi(fileArray[row]); break; //  Is Horde?
-        case 18: a->moraleDamageTakenbyReserves = stof(fileArray[row]); break; //  Morale Damage Taken by Reserves
+        //case 18: a->moraleDamageTakenbyReserves = stof(fileArray[row]); break; //  Morale Damage Taken by Reserves
         case 19: a->diceRollBonus = stoi(fileArray[row]); break; //  Dice Roll Bonus
-        case 20: a->artDamageBackrow = stof(fileArray[row]); break; //  Artillery Damage From Backrow
-        case 21: a->allowedSpecialUnits = fileArray[row]; break; //  Allowed Special Units
-        case 22: a->infantry.offensiveFirePip = stoi(fileArray[row]); break;
-        case 23: a->infantry.defensiveFirePip = stoi(fileArray[row]); break;
-        case 24: a->infantry.offensiveShockPip = stoi(fileArray[row]); break;
-        case 25: a->infantry.defensiveShockPip = stoi(fileArray[row]); break;
-        case 26: a->infantry.offensiveMoralePip = stoi(fileArray[row]); break;
-        case 27: a->infantry.defensiveShockPip = stoi(fileArray[row]); break;
-        case 28: a->firePip = stoi(fileArray[row]); break;
-        case 29: a->shockPip = stoi(fileArray[row]); break;
-        case 30: a->manauveurPip = stoi(fileArray[row]); break;
-        case 31: a->siegePip = stoi(fileArray[row]); break;
-        case 32: a->infFireDamage = stof(fileArray[row]); break;
-        case 33: a->infShockDamage = stof(fileArray[row]); break;
-        case 34: a->baseMilTactics = stof(fileArray[row]); break;
-        case 35: a->terrain = stoi(fileArray[row]); break;
-        case 36: a->crossing = stoi(fileArray[row]); break;
-        case 37: a->powtorzeniaFazBiwy = stoi(fileArray[row]); break;
+        //case 20: a->artDamageBackrow = stof(fileArray[row]); break; //  Artillery Damage From Backrow
+        //case 21: a->allowedSpecialUnits = fileArray[row]; break; //  Allowed Special Units
+        //case 22: a->infantry.offensiveFirePip = stoi(fileArray[row]); break;
+        //case 23: a->infantry.defensiveFirePip = stoi(fileArray[row]); break;
+        //case 24: a->infantry.offensiveShockPip = stoi(fileArray[row]); break;
+        //case 25: a->infantry.defensiveShockPip = stoi(fileArray[row]); break;
+        //case 26: a->infantry.offensiveMoralePip = stoi(fileArray[row]); break;
+        //case 27: a->infantry.defensiveShockPip = stoi(fileArray[row]); break;
+        //case 28: a->firePip = stoi(fileArray[row]); break;
+        //case 29: a->shockPip = stoi(fileArray[row]); break;
+        //case 30: a->manauveurPip = stoi(fileArray[row]); break;
+        //case 31: a->siegePip = stoi(fileArray[row]); break;
+        //case 32: a->infFireDamage = stof(fileArray[row]); break;
+        //case 33: a->infShockDamage = stof(fileArray[row]); break;
+        //case 34: a->milTactics = stof(fileArray[row]); break;
+        //case 35: a->terrain = stoi(fileArray[row]); break;
+        //case 36: a->crossing = stoi(fileArray[row]); break;
+        case 37: break;
 
             // Linie z odczytem danych z plikow.
             // Ilosc linii do odczytania jest w zmiennej int wiersze
         default: break;
         } row++;
-    } row=0;
+    } row=0;*/
 };
 
 int main(int argc, char **argv) {
