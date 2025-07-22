@@ -61,28 +61,30 @@ struct General {
     string trait = "No";
 };
 
-struct Army {   //Rather stack than army
-    int id; //Many stacks can be used, (but up to 1 can battle at a time) so they can be easily swaped for comparison
-    string name;    //Eventual name
+struct Army {   // Rather stack than army
+    int id;                          // Many stacks can be used, (but up to 1 can battle at a time) so they can be easily swaped for comparison
+    string name;                     // Eventual name
 
-    Country* owner; //Points to the country that owns this army
+    Country* owner;                  // Points to the country that owns this army
     General general;
-    int infAmout = 8;
-    int cavAmout = 2;
-    int artAmout = 4;
+    int infAmout = 0;
+    int cavAmout = 0;
+    int artAmout = 0;
+    float averageFrontlineDrill;    // Drill will be applied per stack, not regiment
+    float averageArtilleryDrill;    // Because of meta, you can apply different drill to artillery regiments
 };
 
 class Battle : public Country {
 public:
 
-    Army* A;    //Variable describing battle side A - not attacker
-    Army* B;    //Variable describing battle side B
+    Army* A;    //Type describing battle side A - not attacker
+    Army* B;    //Type describing battle side B
 
     void FileReading(bool affiliation, Army *A, Army *B);   //Affiliation != attacker/defender
 
     //void StatsApplication(Army *a, Army *d);
 
-    void BattleFormation(bool initial, bool affiliation, Army *A, Army *B);    //Initial deployment on day 0 - true/false
+    void BattleFormation(int combatWidth, bool initial, bool affiliation, Army *A, Army *B);    //Initial deployment on day 0 - true/false
 
     static int diceRolls ();
 
@@ -94,12 +96,13 @@ public:
     float AshockDamageDone, float DshockDamageReceived, float AmoraleDamageDone, float DmoraleDamageReceived, float maxMorale);
 
     void Surrender(bool affiliation, Army *a, Army *d);
+
     void DamageApplication(bool affiliation, Country *a, Country *d);
 
     Battle() {
 
         //a = &A;
-        //d = &D;
+        //b = &B;
 
         //FileReading(true, a, d);  //Load
         //FileReading(false, a, d);
@@ -119,6 +122,7 @@ public:
 
             for (i=0; i<3; i++) {    //FIRE phase
                 duration++;
+                BattleFormation(30, true, true, A, B);
                 //DamageCalc(diceRolls(), 0, 0, 0, 1000, A.units[1], );
                 //DamageCalc(1, A, d);
                 //DamageApplication(true, a, d);
@@ -137,12 +141,27 @@ public:
 
 //void Battle::StatsApplication (Army *a, Army *d) {}
 
-void Battle::BattleFormation(bool initial, bool affiliation, Army *A, Army *B) {
+void Battle::BattleFormation(int combatWidth, const bool initial, bool affiliation, Army *A, Army *B) {
 
-    int combatWidth = max(A->owner->technology.combatWidth, B->owner->technology.combatWidth);
-    vector<Unit*> frontLine(combatWidth, nullptr);
-    vector<Unit*> backLine(combatWidth, nullptr);
-    vector<Unit*> reserves(combatWidth, nullptr);
+    combatWidth = max(A->owner->technology.combatWidth, B->owner->technology.combatWidth);
+    Unit* frontLine[combatWidth];
+    Unit* backLine[combatWidth];
+    vector<Unit> reserves;
+
+    if (initial) {    //Initial deployment of regiments into battle (into reserves)
+
+        auto generateUnits = [&](Army* army) {
+            for (int i = 0; i < army->infAmout; i++) {
+                Unit u;
+                u.type = 1;
+                u.strength = 1000;
+                u.morale = army->owner->technology.maxMorale;
+                u.variant = army->owner->infType;
+                u.drill = army->averageFrontlineDrill;
+                reserves.push_back(u);
+            }
+        };
+    }
 
     float moraleDamageFirstLine = 0;
     float avgEnemyMaxMorale = 0;
@@ -152,13 +171,13 @@ void Battle::BattleFormation(bool initial, bool affiliation, Army *A, Army *B) {
     int rightFlank = center + 1;
 
     // Place units (example: using attacker's army)
-    /*for (auto &unit : a->units) {
+    for (auto &unit : reserves) {
         if (leftFlank >= 0) {
             frontLine[leftFlank--] = &unit;
         } else if (rightFlank < combatWidth) {
             frontLine[rightFlank++] = &unit;
         } else { break; }   // No space left (combat width exceeded)
-    }*/
+    }
 
     //Debug
     /*cout << "\n--- Battle Formation Debug ---\n";
@@ -170,7 +189,7 @@ void Battle::BattleFormation(bool initial, bool affiliation, Army *A, Army *B) {
             cout << "Empty";
         }
     }*/
-}
+};
 
 int Battle::DamageCalc (const int diceRoll, const int diceRollBonus, const bool phase, const int terrain, const int crossing, Unit& A, Unit& D,
     const int Gfire, const int Gshock, const int EGfire, const int EGshock, const int Gmaneuver, const int EGmaneuver,
@@ -185,7 +204,7 @@ int Battle::DamageCalc (const int diceRoll, const int diceRollBonus, const bool 
     if (A.morale > 0 && A.strength > 0) {
 
         int generalAdvantage = 0;
-        int unitAdvantage = 0;  //Comparision of regiment FIRE/SHOCK pips
+        int unitAdvantage = 0;  //Comparison of regiment FIRE/SHOCK pips
         const int moraleAdvantage = A.offensiveMoralePip - D.defensiveMoralePip;    //Comparison of regiment MORALE pips
         float techDamageMultiplier = 0;
         float armyDamageDoneMultiplier = 0;
