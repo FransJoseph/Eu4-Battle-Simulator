@@ -10,7 +10,7 @@
 using namespace std;
 
 struct Unit : UnitPips {
-    int type;   //Infantry (1), Cavalry (2), Artillery (3)
+    char type;   //Infantry (x), Cavalry (/), Artillery (*)
     string variant; //Bluecoat Infantry vs Redcoat infantry
     int strength = 1000;
     float morale;   //In battle morale
@@ -66,7 +66,7 @@ struct Army {   // Rather stack than army
     string name;                     // Eventual name
 
     Country* owner;                  // Points to the country that owns this army
-    General general;
+    General* general;
     int infAmout = 0;
     int cavAmout = 0;
     int artAmout = 0;
@@ -80,13 +80,15 @@ public:
     Army* A;    //Type describing battle side A - not attacker
     Army* B;    //Type describing battle side B
 
-    void FileReading(bool affiliation, Army *A, Army *B);   //Affiliation != attacker/defender
+    //void FileReading(bool affiliation, Army *A, Army *B);   //Affiliation != attacker/defender
 
     //void StatsApplication(Army *a, Army *d);
 
-    void BattleFormation(int combatWidth, bool initial, bool affiliation, Army *A, Army *B);    //Initial deployment on day 0 - true/false
+    vector<Unit> BattleDeployment(int combatWidth, int unitAmount, string type);
 
-    static int diceRolls ();
+    void BattleFormation(int combatWidth, bool initial, bool affiliation, int infantryAmount, int cavalryAmount, int artilleryAmount);    //Initial deployment on day 0 - true/false
+
+    static int diceRolls();
 
     static int DamageCalc(int diceRoll, int diceRollBonus, bool phase, int terrain, int crossing, Unit& A, Unit& D,
     int Gfire, int Gshock, int EGfire, int EGshock, int Gmaneuver, int EGmaneuver,
@@ -95,41 +97,41 @@ public:
     float duration, float AfireDamageDone, float DfireDamageReceived,
     float AshockDamageDone, float DshockDamageReceived, float AmoraleDamageDone, float DmoraleDamageReceived, float maxMorale);
 
-    void Surrender(bool affiliation, Army *a, Army *d);
+    //void Surrender(bool affiliation, Army *a, Army *d);
 
     void DamageApplication(bool affiliation, Country *a, Country *d);
 
     Battle() {
 
-        //a = &A;
-        //b = &B;
+        A = new Army();
+        B = new Army();
+        A->general = new General();
+        B->general = new General();
+        A->owner = new Country();
+        B->owner = new Country();
 
         //FileReading(true, a, d);  //Load
         //FileReading(false, a, d);
 
-        //Add regiments
-        //A.addUnits(10, 1, "Matchbeard Mortars", 0.0);
-        //D.addUnits(10, 1, "Steelcoat Infanty", 0.0);
-
         //Add generals
 
-        // Wyznaczenie bazowych wartosci dla zmiennych na podstawie innych zmiennych
-        //a->milTactics = a->milTactics * (1 + a->discipline);
-        //d->milTactics = d->milTactics * (1 + d->discipline);
-
         int duration = 0;
+        int combatWidth = max(A->owner->technology.combatWidth, B->owner->technology.combatWidth);
+
         for (int i=0; i < 120; i++) {
 
-            for (i=0; i<3; i++) {    //FIRE phase
+            for (int f=0; f<3; f++) {    //FIRE phase
                 duration++;
-                BattleFormation(30, true, true, A, B);
+                BattleFormation(30, false, false, 10, 0, 0);
+                BattleFormation(30, false, true, 40, 0, 0);
                 //DamageCalc(diceRolls(), 0, 0, 0, 1000, A.units[1], );
                 //DamageCalc(1, A, d);
                 //DamageApplication(true, a, d);
                 //DamageApplication(false, a, d);
             }
-            for (i=0; i<3; i++) {    //SHOCK phase
+            for (int s=0; s<3; s++) {    //SHOCK phase
                 duration++;
+                //cout<<"SHOCK phase\n";
                 //DamageCalc(0, a, d);
                 //DamageCalc(0, a, d);
                 //DamageApplication(true, a, d);
@@ -137,30 +139,55 @@ public:
             }
         }
     }
+
+    Battle::~Battle() {
+        delete A->general;
+        delete A->owner;
+        delete A;
+
+        delete B->general;
+        delete B->owner;
+        delete B;
+    }
 };
 
 //void Battle::StatsApplication (Army *a, Army *d) {}
 
-void Battle::BattleFormation(int combatWidth, const bool initial, bool affiliation, Army *A, Army *B) {
+vector<Unit> Battle::BattleDeployment(int combatWidth, int unitAmount, string type) {
 
-    combatWidth = max(A->owner->technology.combatWidth, B->owner->technology.combatWidth);
+    vector<Unit> reserves;
+    for (int i = 0; i < unitAmount; i++) {  //Units are generated here and put into reserves
+        Unit u;
+        u.type = 'x';
+        u.strength = 1000;
+        u.morale = 3.0;
+        u.variant = "Matchbeard Mortars";
+        u.drill = 0.0;
+        cout<<u.type;
+        reserves.push_back(u);
+    }
+    return reserves;
+}
+
+
+void Battle::BattleFormation(int combatWidth, const bool initial, bool affiliation, int infantryAmount, int cavalryAmount, int artilleryAmount) {
+
     Unit* frontLine[combatWidth];
     Unit* backLine[combatWidth];
     vector<Unit> reserves;
 
-    if (initial) {    //Initial deployment of regiments into battle (into reserves)
+    if (initial) {    //Initial deployment of units into battle, done only once - no reinforcements from other stacks are simulated
 
-        auto generateUnits = [&](Army* army) {
-            for (int i = 0; i < army->infAmout; i++) {
-                Unit u;
-                u.type = 1;
-                u.strength = 1000;
-                u.morale = army->owner->technology.maxMorale;
-                u.variant = army->owner->infType;
-                u.drill = army->averageFrontlineDrill;
-                reserves.push_back(u);
-            }
-        };
+        for (int i = 0; i < infantryAmount; i++) {  //Units are generated here and put into reserves
+            Unit u;
+            u.type = 'x';
+            u.strength = 1000;
+            u.morale = 3.0;
+            u.variant = "Matchbeard Mortars";
+            u.drill = 0.0;
+            cout<<u.type;
+            reserves.push_back(u);
+        }
     }
 
     float moraleDamageFirstLine = 0;
@@ -170,26 +197,7 @@ void Battle::BattleFormation(int combatWidth, const bool initial, bool affiliati
     int leftFlank = center;
     int rightFlank = center + 1;
 
-    // Place units (example: using attacker's army)
-    for (auto &unit : reserves) {
-        if (leftFlank >= 0) {
-            frontLine[leftFlank--] = &unit;
-        } else if (rightFlank < combatWidth) {
-            frontLine[rightFlank++] = &unit;
-        } else { break; }   // No space left (combat width exceeded)
-    }
-
-    //Debug
-    /*cout << "\n--- Battle Formation Debug ---\n";
-    for (int i = 0; i < combatWidth; i++) {
-        cout << "Position " << i << ": ";
-        if (formation[i] != nullptr) {
-            cout << formation[i]->variant << " (Type " << formation[i]->type << ")";
-        } else {
-            cout << "Empty";
-        }
-    }*/
-};
+}
 
 int Battle::DamageCalc (const int diceRoll, const int diceRollBonus, const bool phase, const int terrain, const int crossing, Unit& A, Unit& D,
     const int Gfire, const int Gshock, const int EGfire, const int EGshock, const int Gmaneuver, const int EGmaneuver,
@@ -255,7 +263,7 @@ int Battle::diceRolls () {
 
 }
 
-void Battle::Surrender(bool affiliation, Army *a, Army *d) {
+/*void Battle::Surrender(bool affiliation, Army *a, Army *d) {
 
     if (affiliation) {  //  Atakujacy wycofal sie z bitwy
 
@@ -265,7 +273,7 @@ void Battle::Surrender(bool affiliation, Army *a, Army *d) {
         //cout<<"\nBroniaca sie armia kraju "<<d->tag<<" wycofala sie z bitwy.\nBitwe wygrala wiec armia kraju "<<a->tag<<".\n";
     }   // Obronca wycofal sie z bitwy
 
-};
+};*/
 
 void Battle::DamageApplication(bool affiliation, Country *a, Country *d) {  // After all calculations are done, units take damage from the enemy they have faced
 
@@ -291,7 +299,7 @@ void Battle::DamageApplication(bool affiliation, Country *a, Country *d) {  // A
 
 };
 
-void Battle::FileReading(bool affiliation, Army *A, Army *B) {  //  Odczyt z plikow: affiliation - jesli 1 to umieszczamy dane Atakujacego, jesli 0 to Obroncy
+/*void Battle::FileReading(bool affiliation, Army *A, Army *B) {  //  Odczyt z plikow: affiliation - jesli 1 to umieszczamy dane Atakujacego, jesli 0 to Obroncy
 
         string fileInput="";    //Varriable containing raw text from file
         int row=0;              //Row of data from file, first = 0
@@ -360,8 +368,8 @@ void Battle::FileReading(bool affiliation, Army *A, Army *B) {  //  Odczyt z pli
             // Ilosc linii do odczytania jest w zmiennej int wiersze
         default: break;
         } row++;
-    } row=0;*/
-};
+    } row=0;
+}*/
 
 int main(int argc, char **argv) {
 
