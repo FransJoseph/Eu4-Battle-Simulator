@@ -4,16 +4,18 @@
 #include <fstream>
 #include <memory>
 #include <random>
+#include <algorithm>
 #include "Technologies.h"
 #include "TechGroups.h"
 
 using namespace std;
 
 struct Unit : UnitPips {
-    char type;   //Infantry (x), Cavalry (/), Artillery (*)
+    char type;   //Infantry (x), Cavalry (/), Artillery (*), Empty (0)
     string variant; //Bluecoat Infantry vs Redcoat infantry
     int strength = 1000;
     float morale;   //In battle morale
+    int flankingRange;
     float drill = 0;
     string special = "No"; //What special unit if any
 };
@@ -27,10 +29,6 @@ public:
     Technology technology = technologies[technologyLvl];
 
     string techGroup = "Dwarven";
-
-    string infType = "Scattergun Axualies";
-    string cavType = "Ramsteel Cavalry";
-    string artType = "Mithrill Gun";
 
     float moraleModifier = 0.2;
     float discipline = 0.1;
@@ -50,6 +48,7 @@ public:
     float moraleDamageTakenByReserves = 0;
     int diceRollBonus = 0;
     float artDamageFromBackrow = 0.2;
+    float cavalryFlankingAbility = 0.0;
 
 };
 
@@ -70,7 +69,10 @@ struct Army {   // Rather stack than army
     int infAmout = 0;
     int cavAmout = 0;
     int artAmout = 0;
-    float averageFrontlineDrill;    // Drill will be applied per stack, not regiment
+    string infVariant;              // Longbow, Redcoat Infantry
+    string cavVariant;              // Eastern Caracole, Dragoons
+    string artVariant;              // Leather Cannon, Flying Battery
+    float averageFrontlineDrill;    // Drill will be applied per stack, not regiment or country
     float averageArtilleryDrill;    // Because of meta, you can apply different drill to artillery regiments
 };
 
@@ -82,11 +84,19 @@ public:
 
     //void FileReading(bool affiliation, Army *A, Army *B);   //Affiliation != attacker/defender
 
-    //void StatsApplication(Army *a, Army *d);
+    float StatsApplication(Country& c);
 
-    vector<Unit> BattleDeployment(int combatWidth, int unitAmount, string type);
+    static vector<Unit> GenerateReserves(Army& a);
 
-    void BattleFormation(int combatWidth, bool initial, bool affiliation, int infantryAmount, int cavalryAmount, int artilleryAmount);    //Initial deployment on day 0 - true/false
+    static vector<Unit> GenerateRegiments(char type, int amount, float morale, int flankingRange, string variant, float drill);
+
+    static int VectorScan(vector<Unit> reserves, char type);
+
+    static vector<Unit> Deployment(vector<Unit> reserves, int amount, char type, int maxCombatWidth, int enemyCombatWidth);
+
+    static vector<Unit> DeploymentLogic(vector<Unit> reserves, int infAmount, int cavAmount, int artAmount, int maxCombatWidth, int enemyCombatWidth, int yourSize, int enemySize);
+
+    vector<Unit> BattleFormation(Army& a, Army& b, bool affiliation, vector<Unit> reserves);
 
     static int diceRolls();
 
@@ -122,9 +132,9 @@ public:
 
             for (int f=0; f<3; f++) {    //FIRE phase
                 duration++;
-                BattleFormation(30, false, false, 10, 0, 0);
-                BattleFormation(30, false, true, 40, 0, 0);
-                //DamageCalc(diceRolls(), 0, 0, 0, 1000, A.units[1], );
+                //BattleFormation(30, false, false, 10, 0, 0);
+                //BattleFormation(30, false, true, 20, 0, 0);
+                //DamageCalc(diceRolls(), 0, 0, 0, 1000, A.units[1]);
                 //DamageCalc(1, A, d);
                 //DamageApplication(true, a, d);
                 //DamageApplication(false, a, d);
@@ -139,63 +149,153 @@ public:
             }
         }
     }
-
-    Battle::~Battle() {
-        delete A->general;
-        delete A->owner;
-        delete A;
-
-        delete B->general;
-        delete B->owner;
-        delete B;
-    }
 };
 
-//void Battle::StatsApplication (Army *a, Army *d) {}
+float Battle::StatsApplication(Country& c) {
 
-vector<Unit> Battle::BattleDeployment(int combatWidth, int unitAmount, string type) {
+    float morale;
+    float discipline;
+    float flankingRange;
 
-    vector<Unit> reserves;
-    for (int i = 0; i < unitAmount; i++) {  //Units are generated here and put into reserves
+}
+
+vector<Unit> Battle::GenerateRegiments(const char type, const int amount, const float morale, const int flankingRange, string variant, const float drill) {
+
+    vector<Unit> regiments;
+    for (int i = 0; i < amount; i++) {  //Units are generated here and put into vector
         Unit u;
-        u.type = 'x';
+        u.type = type;
         u.strength = 1000;
-        u.morale = 3.0;
-        u.variant = "Matchbeard Mortars";
-        u.drill = 0.0;
-        cout<<u.type;
-        reserves.push_back(u);
+        u.morale = morale;
+        u.flankingRange = flankingRange;
+        u.variant = variant;
+        u.drill = drill;
+        regiments.push_back(u);
     }
+    return regiments;
+
+}
+
+vector<Unit> Battle::GenerateReserves(Army& a) {
+
+    const float morale = a.owner->technology.maxMorale * (1 + a.owner->moraleModifier);
+    int flankingRange;
+    vector<Unit> reserves;  // Battle reserves "line"
+
+    if (a.infAmout > 0) {   // Add generated regiments into reserves
+        flankingRange = floor(1 * (1 + a.owner->technology.flankingRange));
+        auto inf = GenerateRegiments('x', a.infAmout, morale, flankingRange, a.infVariant, a.averageFrontlineDrill);
+        reserves.insert(reserves.end(), inf.begin(), inf.end());    // Add generated regiments into reserves
+    }
+    if (a.cavAmout > 0) {   // Cavalry
+        flankingRange = floor(2 * (1 + a.owner->technology.flankingRange + a.owner->cavalryFlankingAbility));
+        auto cav = GenerateRegiments('/', a.cavAmout, morale, flankingRange, a.cavVariant, a.averageFrontlineDrill);
+        reserves.insert(reserves.end(), cav.begin(), cav.end());    // Add generated regiments into reserves
+    }
+    if (a.artAmout > 0) {   // Artillery
+        flankingRange = floor(2 * (1 + a.owner->technology.flankingRange));
+        auto art = GenerateRegiments('*', a.artAmout, morale, flankingRange, a.artVariant, a.averageArtilleryDrill);
+        reserves.insert(reserves.end(), art.begin(), art.end());    // Add generated regiments into reserves
+    }
+
     return reserves;
 }
 
+int Battle::VectorScan(vector<Unit> reserves, char type) {
 
-void Battle::BattleFormation(int combatWidth, const bool initial, bool affiliation, int infantryAmount, int cavalryAmount, int artilleryAmount) {
+    int index = 0;
 
-    Unit* frontLine[combatWidth];
-    Unit* backLine[combatWidth];
-    vector<Unit> reserves;
+    auto it = find_if(reserves.begin(), reserves.end(),
+    [type](const Unit& u) { return u.type == type; });
 
-    if (initial) {    //Initial deployment of units into battle, done only once - no reinforcements from other stacks are simulated
+    if (it != reserves.end()) {
+       index = distance(reserves.begin(), it);
+    } else {
+        index = -1;
+    }
 
-        for (int i = 0; i < infantryAmount; i++) {  //Units are generated here and put into reserves
-            Unit u;
-            u.type = 'x';
-            u.strength = 1000;
-            u.morale = 3.0;
-            u.variant = "Matchbeard Mortars";
-            u.drill = 0.0;
-            cout<<u.type;
-            reserves.push_back(u);
+    return index;
+}
+
+vector<Unit> Battle::Deployment(vector<Unit> reserves, const int amount, const char type, int maxCombatWidth, int enemyCombatWidth) {
+
+    const int center = (maxCombatWidth - 1) / 2;   // Left-biased center
+    int leftFlank = center;
+    int rightFlank = center + 1;
+    int placeHere = leftFlank;
+    vector<Unit> line;
+
+    for (int i = 0; i < amount; i++) {
+
+        const int index = VectorScan(reserves, type);  // Find infantry regiment in reserves
+        line[placeHere] = reserves[index]; // Add that regiment to the frontline
+        reserves.erase(reserves.begin() + index);   // Remove that regiment from reserves
+        if (placeHere == leftFlank) { leftFlank++; placeHere = rightFlank; }    // If it was added to the left side, offset flank to free slot and change to right side for the later regiment
+        else { rightFlank++; placeHere = leftFlank; }   // Opposite
+    }
+
+    return line;
+}
+
+vector<Unit> Battle::DeploymentLogic(vector<Unit> reserves, int infAmount, int cavAmount, int artAmount, const int maxCombatWidth, const int enemyCombatWidth, const int yourSize, const int enemySize) {
+
+    vector<Unit> frontline(maxCombatWidth);
+    vector<Unit> backline(maxCombatWidth);
+
+    if (yourSize <= enemySize) {    // Case for armies that do not need to place cavalry closer to the center due to enemy smaller size - so case that army is smaller, but equal also fits
+
+        if (infAmount < maxCombatWidth) {   // Case: There is not enough infantry to fill first line
+
+            if (infAmount > 0) {   // Deploy all infantry into frontline because it will fit
+
+                auto infRegiments = Deployment(reserves, infAmount, 'x', maxCombatWidth, enemyCombatWidth); // Call function to pass infantry from reserves to frontline
+                frontline.insert(frontline.end(), infRegiments.begin(), infRegiments.end());    // Join function results with frontline
+                infAmount = 0;    // Acknowledge that all requested (all) infantry was added
+            }
+            while (VectorScan(frontline, '0') == -1 && cavAmount > 0) { // Deploy as much cavalry to the frontline flanks as possible, but only if it will fit into combat width
+
+                auto cavRegiments = Deployment(reserves, 1, '/', maxCombatWidth, enemyCombatWidth); // Call function to pass cavalry from reserves to frontline
+                frontline.insert(frontline.end(), cavRegiments.begin(), cavRegiments.end());    // Join function results with frontline
+                cavAmount--;    // Acknowledge that 1 cavalry was added
+            }
+            while (yourSize - artAmount < artAmount && VectorScan(frontline, '0') != -1) {    // Put artillery into frontline until it can fit behind inf and/or cav or frontline is full
+
+                auto artRegiments = Deployment(reserves, 1, '*', maxCombatWidth, enemyCombatWidth); // Call function to pass artillery from reserves to frontline
+                frontline.insert(frontline.end(), artRegiments.begin(), artRegiments.end());    // Join function results with frontline
+                artAmount--;    // Acknowledge that 1 artillery was added
+            }
+            while (VectorScan(backline, '0') != -1 && artAmount > 0) {  // Deploy rest of the artillery into the backline until backline is full
+
+                auto artRegiments = Deployment(reserves, 1, '*', maxCombatWidth, enemyCombatWidth); // Call function to pass artillery from reserves to backline
+                backline.insert(backline.end(), artRegiments.begin(), artRegiments.end());  // Join function results with backline
+                artAmount--;    // Acknowledge that 1 artillery was added
+            }
         }
     }
 
-    float moraleDamageFirstLine = 0;
-    float avgEnemyMaxMorale = 0;
+    return frontline, backline;
+}
 
-    const int center = (combatWidth - 1) / 2;   // Left-biased center
-    int leftFlank = center;
-    int rightFlank = center + 1;
+vector<Unit> Battle::BattleFormation(Army& a, Army& b, bool affiliation, vector<Unit> reserves) {
+
+    // Battle combat width
+    const int combatWidth = max(a.owner->technology.combatWidth, b.owner->technology.combatWidth);
+
+    // Remove regiments with 0 strength and/or 0 morale from reserves
+    reserves.erase(
+    remove_if(reserves.begin(), reserves.end(),
+        [](const Unit& u) {
+            return u.strength <= 0 || u.morale <= 0.0;  // Condition to remove
+        }),
+    reserves.end()
+    );
+
+    // Decide what army is bigger if any
+    const int aSize = a.infAmout + a.cavAmout + a.artAmout;
+    const int bSize = b.infAmout + b.cavAmout + b.artAmout;
+
+    BattleDeployment(reserves, a.infAmout, combatWidth, b.owner->technology.combatWidth, aSize, bSize);
+    BattleDeployment(reserves, b.infAmout, combatWidth, a.owner->technology.combatWidth, bSize, aSize);
 
 }
 
