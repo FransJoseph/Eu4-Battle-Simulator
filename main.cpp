@@ -219,7 +219,7 @@ int Battle::VectorScan(vector<Unit> reserves, char type) {
 
 vector<Unit> Battle::Deployment(vector<Unit> reserves, const int amount, const char type, int maxCombatWidth, int enemyCombatWidth) {
 
-    const int center = (maxCombatWidth - 1) / 2;   // Left-biased center
+    const int center = (maxCombatWidth - 1) / 2;   // Left-biased center IS ONLY FOR THE ATTACKER
     int leftFlank = center;
     int rightFlank = center + 1;
     int placeHere = leftFlank;
@@ -270,6 +270,10 @@ vector<Unit> Battle::DeploymentLogic(vector<Unit> reserves, int infAmount, int c
                 backline.insert(backline.end(), artRegiments.begin(), artRegiments.end());  // Join function results with backline
                 artAmount--;    // Acknowledge that 1 artillery was added
             }
+        }
+        else {    // Case: There is enough infantry to fill the entire first row
+
+            const int cavalryFrontLine = min(maxCombatWidth / 4, cavAmount);    // How much cavalry will be wanted in one flank (that is why / 4) of the frontline
         }
     }
 
